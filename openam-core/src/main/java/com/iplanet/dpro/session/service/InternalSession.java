@@ -53,6 +53,8 @@ import org.forgerock.openam.session.AMSession;
 import org.forgerock.openam.session.SessionEventType;
 import org.forgerock.openam.session.service.access.SessionPersistenceManager;
 import org.forgerock.openam.session.service.access.SessionPersistenceObservable;
+import org.forgerock.openam.utils.Time;
+import org.forgerock.util.Reject;
 import org.forgerock.util.annotations.VisibleForTesting;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -165,8 +167,6 @@ public class InternalSession implements Serializable, AMSession, SessionPersiste
      */
     private final ConcurrentMap<String, Set<SessionID>> sessionEventURLs = new ConcurrentHashMap<>();
 
-    @JsonIgnore private boolean isISStored = false;
-
     /* Session handle is used to prevent administrator from impersonating other users. */
     @JsonIgnore private String sessionHandle = null;
 
@@ -215,19 +215,14 @@ public class InternalSession implements Serializable, AMSession, SessionPersiste
     /**
      * Default constructor required for deserialisation, and should not be used elsewhere.
      *
-     * This constructor is intentionally blank, except for setting isISStored to true (if the InternalSession is being
-     * deserialised, it is being loaded from storage).
      * When deserialised the code responsible for instantiating it will have no means of resolving dependencies.
      *
      * Instead this is deferred to
-     * {@link InternalSession#setSessionServiceDependencies(com.iplanet.dpro.session.service.SessionService,
-     * com.iplanet.dpro.session.service.SessionServiceConfig, InternalSessionEventBroker,
-     * com.iplanet.dpro.session.service.SessionLogging, com.iplanet.dpro.session.service.SessionAuditor,
-     * com.sun.identity.session.util.SessionUtilsWrapper, com.iplanet.dpro.session.service.SessionConstraint,
-     * com.sun.identity.shared.debug.Debug)}
+     * {@link InternalSession#setSessionServiceDependencies(SessionService, SessionServiceConfig,
+     *                      InternalSessionEventBroker, SessionUtilsWrapper, SessionConstraint, Debug)}
      */
     public InternalSession() {
-        isISStored = true;
+        // Intentionally left blank
     }
 
     /**
@@ -696,21 +691,13 @@ public class InternalSession implements Serializable, AMSession, SessionPersiste
     }
 
     /**
-     * Set whether this InternalSession is persisted.
-     * @param isStored True if the session is persisted, false otherwise.
-     */
-    public void setStored(boolean isStored) {
-        isISStored = isStored;
-    }
-
-    /**
      * Returns whether the InternalSession represented has been stored. If this is true, changes to this object will
      * update the stored version.
      * return <code>true</code> if the internal session is stored
      *        <code>false</code> otherwise
      */
     public boolean isStored() {
-        return isISStored;
+        return persistenceManager != null;
     }
 
     /**
@@ -720,26 +707,8 @@ public class InternalSession implements Serializable, AMSession, SessionPersiste
      *         after creation , <code>false</code> otherwise
      */
     public boolean activate(String userDN) {
-        return activate(userDN, false);
-    }
-
-    /**
-     * Changes the state of the session to ACTIVE after creation.
-     * @param userDN
-     * @param stateless Indicates that the log in session is a stateless session.
-     * @return <code> true </code> if the session is successfully activated
-     *         after creation , <code>false</code> otherwise
-     */
-    public boolean activate(String userDN, boolean stateless) {
-
         // check userDN was provided
         if (userDN == null) {
-            return false;
-        }
-
-        // check max session limit for this server has not been reached
-        if ((sessionService.hasExceededMaxSessions()) && !sessionService.isSuperUser(userDN)) {
-            fireSessionEvent(SessionEventType.SESSION_MAX_LIMIT_REACHED);
             return false;
         }
 
@@ -757,9 +726,6 @@ public class InternalSession implements Serializable, AMSession, SessionPersiste
         setState(SessionState.VALID);
         fireSessionEvent(SessionEventType.SESSION_CREATION);
 
-        if (!stateless && (!isAppSession() || serviceConfig.isReturnAppSessionEnabled())) {
-            sessionService.incrementActiveSessions(); // TODO: Convert to InternalSessionListener (AME-12528) ?
-        }
         return true;
     }
 
@@ -796,13 +762,15 @@ public class InternalSession implements Serializable, AMSession, SessionPersiste
     }
 
     /**
-     * Changes the state of the session and sends Session Notification when session times out.
+     * Sets session timeout time (in millis).
+     *
+     * @param timeoutTime The timeout time (in millis).
      */
-    public void timeoutSession(SessionEventType eventType) {
-        timedOutTimeInSeconds = MILLISECONDS.toSeconds(currentTimeMillis());
-        putProperty(SESSION_TIMED_OUT, String.valueOf(timedOutTimeInSeconds)); // TODO: Convert to InternalSessionListener (AME-12528)
-        fireSessionEvent(eventType, timedOutTimeInSeconds);
-        sessionService.destroyInternalSession(this);
+    public void setTimedOutTime(long timeoutTime) {
+        Reject.rejectStateIfTrue(!willExpire(), "Cannot timeout non-expiring session.");
+        Reject.rejectStateIfTrue(isTimedOut(), "Session already timed out.");
+        timedOutTimeInSeconds = MILLISECONDS.toSeconds(timeoutTime);
+        putProperty(SESSION_TIMED_OUT, String.valueOf(timedOutTimeInSeconds));
     }
 
     public SessionInfo toSessionInfo() {
@@ -1146,10 +1114,6 @@ public class InternalSession implements Serializable, AMSession, SessionPersiste
     }
 
     private void fireSessionEvent(SessionEventType sessionEventType) {
-        sessionEventBroker.onEvent(new InternalSessionEvent(this, sessionEventType));
-    }
-
-    private void fireSessionEvent(SessionEventType sessionEventType, long eventTime) {
-        sessionEventBroker.onEvent(new InternalSessionEvent(this, sessionEventType, eventTime));
+        sessionEventBroker.onEvent(new InternalSessionEvent(this, sessionEventType, Time.currentTimeMillis()));
     }
 }

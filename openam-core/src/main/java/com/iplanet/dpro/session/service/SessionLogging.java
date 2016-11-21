@@ -85,13 +85,7 @@ public class SessionLogging implements InternalSessionListener {
 
     @Override
     public void onEvent(final InternalSessionEvent event) {
-        switch (event.getType()) {
-            case SESSION_MAX_LIMIT_REACHED:
-                logSystemMessage("SESSION_MAX_LIMIT_REACHED");
-                break;
-            default:
-                logEvent(event.getInternalSession().toSessionInfo(), event.getType(), event.getTime());
-        }
+        logEvent(event.getInternalSession().toSessionInfo(), event.getType(), event.getTime());
     }
 
     /**
@@ -104,20 +98,28 @@ public class SessionLogging implements InternalSessionListener {
         switch (eventType) {
             case SESSION_CREATION:
                 logEvent(sessionInfo, "SESSION_CREATED", timestamp);
+                break;
             case IDLE_TIMEOUT:
                 logEvent(sessionInfo, "SESSION_IDLE_TIMED_OUT", timestamp);
+                break;
             case MAX_TIMEOUT:
                 logEvent(sessionInfo, "SESSION_MAX_TIMEOUT", timestamp);
+                break;
             case LOGOUT:
                 logEvent(sessionInfo, "SESSION_LOGOUT", timestamp);
+                break;
             case DESTROY:
                 logEvent(sessionInfo, "SESSION_DESTROYED", timestamp);
+                break;
             case PROPERTY_CHANGED:
                 logEvent(sessionInfo, "SESSION_PROPERTY_CHANGED", timestamp);
+                break;
             case QUOTA_EXHAUSTED:
                 logEvent(sessionInfo, "SESSION_QUOTA_EXHAUSTED", timestamp);
+                break;
             case PROTECTED_PROPERTY:
                 logEvent(sessionInfo, "SESSION_PROTECTED_PROPERTY_ERROR", timestamp);
+                break;
             default:
                 logEvent(sessionInfo, "SESSION_UNKNOWN_EVENT", timestamp);
         }
@@ -147,22 +149,6 @@ public class SessionLogging implements InternalSessionListener {
             getLogger().log(lr, AccessController.doPrivileged(adminTokenAction));
         } catch (Exception ex) {
             sessionDebug.error("SessionService.logIt(): Cannot write to the session log file: ", ex);
-        }
-    }
-
-    private void logSystemMessage(String logMessageId) {
-        if (!serviceConfig.isLoggingEnabled()) {
-            return;
-        }
-        try {
-            String[] data = {logMessageId};
-            LogRecord lr = getLogMessageProvider().createLogRecord(logMessageId, data, null);
-            SSOToken serviceToken = AccessController.doPrivileged(adminTokenAction);
-            lr.addLogInfo(LogConstants.LOGIN_ID_SID, serviceToken.getTokenID().toString());
-            lr.addLogInfo(LogConstants.LOGIN_ID, serviceToken.getPrincipal().getName());
-            getErrorLogger().log(lr, serviceToken);
-        } catch (Exception ex) {
-            sessionDebug.error("SessionService.logSystemMessage(): Cannot write to the session error log file: ", ex);
         }
     }
 

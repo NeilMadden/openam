@@ -344,11 +344,6 @@ public interface Constants {
             "iplanet-am-session-constraint-max-wait-time";
 
     /**
-     * Property string for max number of sessions
-     */
-    static final String AM_SESSION_MAX_SESSIONS = "com.iplanet.am.session.maxSessions";
-
-    /**
      * Property name for maximum size of the internal session cache.
      */
     String AM_SESSION_MAX_CACHE_SIZE = "org.forgerock.openam.session.service.access.persistence.caching.maxsize";
@@ -1385,4 +1380,8 @@ public interface Constants {
     /** Service version for the REST APIs service. */
     String REST_APIS_SERVICE_VERSION = "1.0";
 
+    /**
+     * The name of the request attribute that tells whether this authentication happened via WS-Fed AR profile.
+     */
+    String WSFED_ACTIVE_LOGIN = "org.forgerock.openam.federation.wsfed.active.login";
 }

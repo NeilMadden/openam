@@ -53,17 +53,18 @@ public class NotificationsGuiceModule extends PrivateModule {
                 .in(Singleton.class);
         bindConstant().annotatedWith(Names.named("queueSize"))
                 .to(SystemProperties.getAsInt("org.forgerock.openam.notifications.local.queueSize", 10000));
+        bindConstant().annotatedWith(Names.named("consumers"))
+                .to(SystemProperties.getAsInt("org.forgerock.openam.notifications.local.consumers", 4));
         bindConstant().annotatedWith(Names.named("tokenExpirySeconds"))
                 .to(SystemProperties.getAsLong("org.forgerock.openam.notifications.cts.tokenExpirySeconds", 600L));
+        bindConstant().annotatedWith(Names.named("publishFrequencyMilliseconds"))
+                .to(SystemProperties.getAsLong("org.forgerock.openam.notifications.cts.publishFrequencyMilliseconds",
+                        100L));
+        bindConstant().annotatedWith(Names.named("ctsQueueSize"))
+                .to(SystemProperties.getAsInt("org.forgerock.openam.notifications.cts.queueSize", 10000));
 
         expose(NotificationBroker.class).annotatedWith(LocalOnly.class);
         expose(NotificationBroker.class);
-    }
-
-    @Provides
-    @Inject
-    ExecutorService executorService(ExecutorServiceFactory factory) {
-        return factory.createFixedThreadPool(1);
     }
 
     @Provides
@@ -81,8 +82,12 @@ public class NotificationsGuiceModule extends PrivateModule {
     @Singleton
     NotificationBroker notificationBroker(CTSPersistentStore store,
             @LocalOnly NotificationBroker broker,
-            @Named("tokenExpirySeconds") long tokenExpirySeconds) {
-        return new CTSNotificationBroker(store, broker, tokenExpirySeconds);
+            @Named("ctsQueueSize") int queueSize,
+            @Named("tokenExpirySeconds") long tokenExpirySeconds,
+            @Named("publishFrequencyMilliseconds") long publishFrequencyMilliseconds,
+            ExecutorServiceFactory factory) {
+        return new CTSNotificationBroker(store, broker, queueSize, tokenExpirySeconds,
+                publishFrequencyMilliseconds, factory);
     }
 
 }

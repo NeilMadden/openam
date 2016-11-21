@@ -45,7 +45,6 @@ import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
 
-import org.forgerock.openam.session.stateless.cache.StatelessJWTCache;
 import org.forgerock.openam.sso.providers.stateless.JwtSessionMapper;
 import org.forgerock.openam.sso.providers.stateless.JwtSessionMapperConfig;
 
@@ -71,8 +70,6 @@ public class SessionServiceConfig {
     public static final String AM_SESSION_SERVICE_NAME = "iPlanetAMSessionService";
 
     private final Debug sessionDebug;
-    private final SessionServerConfig sessionServerConfig;
-    private final PrivilegedAction<SSOToken> dsameAdminTokenProvider;
 
     /*
      * Constant Properties
@@ -85,12 +82,6 @@ public class SessionServiceConfig {
     /*
      * System Properties
      */
-
-    /**
-     * Property string for max number of sessions
-     */
-    static final int DEFAULT_MAX_SESSIONS = 10000;
-    private final int maxSessions;
 
     private static final int DEFAULT_MAX_SESSION_CACHE_SIZE = 5000;
 
@@ -279,18 +270,12 @@ public class SessionServiceConfig {
     @Inject
     SessionServiceConfig(
             @Named(SessionConstants.SESSION_DEBUG) final Debug sessionDebug,
-            SessionServerConfig sessionServerConfig,
             PrivilegedAction<SSOToken> adminTokenProvider,
-            final StatelessJWTCache jwtCache,
             final ServiceListeners serviceListeners) {
 
         this.sessionDebug = sessionDebug;
-        this.sessionServerConfig = sessionServerConfig;
-        this.dsameAdminTokenProvider = adminTokenProvider;
 
         // Initialize values set from System properties
-        maxSessions =
-                SystemProperties.getAsInt(AM_SESSION_MAX_SESSIONS, DEFAULT_MAX_SESSIONS);
         logStatus =
                 LOGSTATUS_ACTIVE.equalsIgnoreCase(SystemProperties.get(AM_LOGSTATUS));
         httpSessionTrackingCookieName =
@@ -428,15 +413,6 @@ public class SessionServiceConfig {
 
     public String getSecurityCookieName() {
         return SECURITY_COOKIE_NAME;
-    }
-
-    /**
-     * Returns SystemProperty "com.iplanet.am.session.maxSessions".
-     *
-     * Defaults to 10,000 if not specified.
-     */
-    public int getMaxSessions() {
-        return maxSessions;
     }
 
     /**

@@ -26,22 +26,23 @@ define([
                 reducer(undefined, {})
             ).eql({
                 realm: undefined,
-                maxidletime: undefined
+                sessionHandle: undefined
             });
         });
 
         it(`handles ${types.SESSION_ADD_INFO}`, () => {
             const realm = "/realmA";
-            const minutes = 10;
+            const sessionHandle = "sessionHandle";
 
             expect(
                 reducer({}, {
                     type: types.SESSION_ADD_INFO,
-                    info: { realm, maxidletime: minutes }
+                    realm,
+                    sessionHandle
                 })
             ).eql({
                 realm: realm.toLowerCase(),
-                maxidletime: minutes * 60
+                sessionHandle
             });
         });
 

@@ -16,22 +16,28 @@
 
 package org.forgerock.openam.core.rest.sms;
 
+import static org.forgerock.guava.common.collect.Sets.newHashSet;
 import static org.forgerock.http.routing.RoutingMode.EQUALS;
 import static org.forgerock.http.routing.RoutingMode.STARTS_WITH;
+import static org.forgerock.json.resource.Requests.newApiRequest;
 import static org.forgerock.json.resource.Resources.newAnnotatedRequestHandler;
 import static org.forgerock.json.resource.Resources.newCollection;
-import static org.forgerock.openam.core.rest.sms.tree.SmsRouteTreeBuilder.*;
-import static org.forgerock.openam.rest.RealmRoutingFactory.REALM_ROUTE;
+import static org.forgerock.json.resource.Resources.newHandler;
+import static org.forgerock.openam.core.rest.sms.SmsRealmProvider.REALMS_PATH;
+import static org.forgerock.openam.core.rest.sms.tree.SmsRouteTreeBuilder.branch;
+import static org.forgerock.openam.core.rest.sms.tree.SmsRouteTreeBuilder.filter;
+import static org.forgerock.openam.core.rest.sms.tree.SmsRouteTreeBuilder.leaf;
+import static org.forgerock.openam.core.rest.sms.tree.SmsRouteTreeBuilder.tree;
 import static org.forgerock.openam.utils.CollectionUtils.asSet;
 
-import javax.inject.Inject;
-import javax.inject.Named;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +46,46 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.inject.Inject;
+import javax.inject.Named;
+
+import org.forgerock.api.models.ApiDescription;
+import org.forgerock.authz.filter.crest.api.CrestAuthorizationModule;
+import org.forgerock.guava.common.base.Predicate;
+import org.forgerock.guice.core.InjectorHolder;
+import org.forgerock.http.ApiProducer;
+import org.forgerock.http.routing.RoutingMode;
+import org.forgerock.http.routing.UriRouterContext;
+import org.forgerock.json.resource.ActionRequest;
+import org.forgerock.json.resource.ActionResponse;
+import org.forgerock.json.resource.CreateRequest;
+import org.forgerock.json.resource.DeleteRequest;
+import org.forgerock.json.resource.PatchRequest;
+import org.forgerock.json.resource.QueryRequest;
+import org.forgerock.json.resource.QueryResourceHandler;
+import org.forgerock.json.resource.QueryResponse;
+import org.forgerock.json.resource.ReadRequest;
+import org.forgerock.json.resource.Request;
+import org.forgerock.json.resource.RequestHandler;
+import org.forgerock.json.resource.ResourceException;
+import org.forgerock.json.resource.ResourcePath;
+import org.forgerock.json.resource.ResourceResponse;
+import org.forgerock.json.resource.Router;
+import org.forgerock.json.resource.UpdateRequest;
+import org.forgerock.openam.core.CoreWrapper;
+import org.forgerock.openam.core.rest.sms.tree.SmsRouteTree;
+import org.forgerock.openam.forgerockrest.utils.MatchingResourcePath;
+import org.forgerock.openam.rest.RealmRoutingFactory;
+import org.forgerock.openam.rest.authz.CrestPrivilegeAuthzModule;
+import org.forgerock.openam.session.SessionCache;
+import org.forgerock.openam.utils.CollectionUtils;
+import org.forgerock.openam.utils.RealmNormaliser;
+import org.forgerock.services.context.Context;
+import org.forgerock.services.context.RootContext;
+import org.forgerock.services.descriptor.Describable;
+import org.forgerock.services.routing.RouteMatcher;
+import org.forgerock.util.promise.Promise;
 
 import com.google.inject.assistedinject.Assisted;
 import com.iplanet.sso.SSOException;
@@ -57,39 +103,6 @@ import com.sun.identity.sm.ServiceListener;
 import com.sun.identity.sm.ServiceManager;
 import com.sun.identity.sm.ServiceSchema;
 import com.sun.identity.sm.ServiceSchemaManager;
-import org.forgerock.api.models.ApiDescription;
-import org.forgerock.authz.filter.crest.api.CrestAuthorizationModule;
-import org.forgerock.guava.common.base.Predicate;
-import org.forgerock.guice.core.InjectorHolder;
-import org.forgerock.http.ApiProducer;
-import org.forgerock.http.routing.RoutingMode;
-import org.forgerock.json.resource.ActionRequest;
-import org.forgerock.json.resource.ActionResponse;
-import org.forgerock.json.resource.CreateRequest;
-import org.forgerock.json.resource.DeleteRequest;
-import org.forgerock.json.resource.PatchRequest;
-import org.forgerock.json.resource.QueryRequest;
-import org.forgerock.json.resource.QueryResourceHandler;
-import org.forgerock.json.resource.QueryResponse;
-import org.forgerock.json.resource.ReadRequest;
-import org.forgerock.json.resource.Request;
-import org.forgerock.json.resource.RequestHandler;
-import org.forgerock.json.resource.ResourceException;
-import org.forgerock.json.resource.ResourceResponse;
-import org.forgerock.json.resource.Router;
-import org.forgerock.json.resource.UpdateRequest;
-import org.forgerock.openam.core.CoreWrapper;
-import org.forgerock.openam.core.rest.sms.tree.SmsRouteTree;
-import org.forgerock.openam.forgerockrest.utils.MatchingResourcePath;
-import org.forgerock.openam.rest.RealmRoutingFactory;
-import org.forgerock.openam.rest.authz.CrestPrivilegeAuthzModule;
-import org.forgerock.openam.session.SessionCache;
-import org.forgerock.openam.utils.CollectionUtils;
-import org.forgerock.openam.utils.RealmNormaliser;
-import org.forgerock.services.context.Context;
-import org.forgerock.services.descriptor.Describable;
-import org.forgerock.services.routing.RouteMatcher;
-import org.forgerock.util.promise.Promise;
 
 /**
  * A CREST routing request handler that creates collection and singleton resource providers for
@@ -127,12 +140,14 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
     private final SmsServiceHandlerFunction smsServiceHandlerFunction;
     private final SitesResourceProvider sitesResourceProvider;
     private final ServersResourceProvider serversResourceProvider;
+    private final List<Describable.Listener> apiListeners = new ArrayList<>();
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock read = lock.readLock();
     private final Lock write = lock.writeLock();
     // Guarded by lock.
     private final SmsRouteTree routeTree;
+    private ApiDescription api;
 
     @Inject
     public SmsRequestHandler(@Assisted SchemaType type, SmsCollectionProviderFactory collectionProviderFactory,
@@ -245,8 +260,8 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
     //routes under global-config/realms/{realms} route
     private void addRealmHandler() {
         if (SchemaType.GLOBAL.equals(schemaType)) {
-            routeTree.addRoute(RoutingMode.STARTS_WITH, REALM_ROUTE, realmRoutingFactory.createRouter(
-                    new SmsRealmProvider(sessionCache, coreWrapper, realmNormaliser)));
+            routeTree.addRoute(RoutingMode.STARTS_WITH, REALMS_PATH,
+                    newHandler(new SmsRealmProvider(sessionCache, coreWrapper, realmNormaliser)));
         }
     }
 
@@ -317,15 +332,18 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
      */
     private void refreshServiceRoute(int type, String svcName, String svcVersion) {
         try {
+            ServiceManager svcMgr = getServiceManager();
             switch (type) {
                 case SMSObjectListener.DELETE:
                     if (serviceRoutes.containsKey(svcName)) {
                         removeService(svcName);
+                        notifyDescriptorChange();
                     }
                     break;
                 case SMSObjectListener.ADD:
                     if (!serviceRoutes.containsKey(svcName)) {
-                        serviceRoutes.put(svcName, addService(getServiceManager(), svcName, svcVersion));
+                        serviceRoutes.put(svcName, addService(svcMgr, svcName, svcVersion));
+                        notifyDescriptorChange();
                     }
                     break;
                 case SMSObjectListener.MODIFY:
@@ -333,6 +351,7 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
                         write.lock();
                         removeService(svcName);
                         serviceRoutes.put(svcName, addService(getServiceManager(), svcName, svcVersion));
+                        notifyDescriptorChange();
                     } finally {
                         write.unlock();
                     }
@@ -428,7 +447,7 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
             throws SMSException, SSOException {
         if (excludedServices.contains(serviceName)) {
             debug.message("Excluding service from REST SMS: {}", serviceName);
-            return null;
+            return new HashMap<>();
         }
 
         ServiceSchemaManager ssm = sm.getSchemaManager(serviceName, serviceVersion);
@@ -596,7 +615,11 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
         }
         SmsRouteTree tree = routeTree == null ? this.routeTree.handles(schema.getServiceName()) : routeTree;
         SmsRouteTree.Route route = tree.addRoute(mode, path, handler, schema.isHiddenInConfigUI());
-        serviceRoutes.put(tree, asSet(route.matcher));
+        if (serviceRoutes.containsKey(tree)) {
+            serviceRoutes.get(tree).add(route.matcher);
+        } else {
+            serviceRoutes.put(tree, newHashSet(route.matcher));
+        }
         return route.tree;
     }
 
@@ -785,12 +808,7 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
      */
     @Override
     public void addDescriptorListener(Listener listener) {
-        try {
-            read.lock();
-            routeTree.addDescriptorListener(listener);
-        } finally {
-            read.unlock();
-        }
+        apiListeners.add(listener);
     }
 
     /**
@@ -802,11 +820,18 @@ public class SmsRequestHandler implements RequestHandler, SMSObjectListener, Ser
      */
     @Override
     public void removeDescriptorListener(Listener listener) {
-        try {
-            read.lock();
-            routeTree.removeDescriptorListener(listener);
-        } finally {
-            read.unlock();
+        apiListeners.remove(listener);
+    }
+
+    private synchronized void notifyDescriptorChange() {
+        ApiDescription oldApi = this.api;
+        this.api = routeTree.handleApiRequest(
+                new UriRouterContext(new RootContext(), "", "", Collections.<String, String>emptyMap()),
+                newApiRequest(ResourcePath.empty()));
+        if (!oldApi.equals(api)) {
+            for (Listener listener : apiListeners) {
+                listener.notifyDescriptorChange();
+            }
         }
     }
 }

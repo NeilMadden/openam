@@ -25,7 +25,7 @@ public class CTSWorkerTaskProvider {
     private Collection<CTSWorkerTask> tasks;
 
     /**
-     * Constructs a new ReaperTaskProvider which will supply the provided tasks to the {@link CTSWorkerInit} service.
+     * Constructs a new ReaperTaskProvider which will supply the provided tasks to the {@link CTSWorkerManager} service.
      * @param tasks Collection of tasks this provider will provide.
      */
     public CTSWorkerTaskProvider(Collection<CTSWorkerTask> tasks) {

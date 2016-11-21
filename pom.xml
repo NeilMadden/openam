@@ -149,7 +149,6 @@
         <cc-ui.version>2008-08-08</cc-ui.version>
         <jsr311-api.version>1.1.1</jsr311-api.version>
         <jstl.version>1.1.2</jstl.version>
-        <log4j.version>1.2.16</log4j.version>
         <mail.version>1.5.1</mail.version>
         <jersey-oauth.version>1.1.5.2</jersey-oauth.version>
         <relaxngDatatype.version>20020414</relaxngDatatype.version>
@@ -193,28 +192,6 @@
     <profiles>
         <!-- Place Default Profiles here to override and determine Environment. -->
 
-        <profile>
-            <id>default-profile</id>
-            <!-- This profile gets activated for WINDOWS and LINUX Systems -->
-            <activation>
-                <file>
-                    <exists>${env.JAVA_HOME}/lib/tools.jar</exists>
-                </file>
-            </activation>
-            <properties>
-                <toolsjar>${env.JAVA_HOME}/lib/tools.jar</toolsjar>
-            </properties>
-            <dependencies>
-                <dependency>
-                    <groupId>com.sun</groupId>
-                    <artifactId>tools</artifactId>
-                    <version>${maven.compiler.source}</version>
-                    <scope>system</scope>
-                    <optional>true</optional>
-                    <systemPath>${toolsjar}</systemPath>
-                </dependency>
-            </dependencies>
-        </profile>
         <profile>
             <id>release</id>
             <activation>
@@ -610,7 +587,7 @@
             <dependency>
                 <groupId>org.forgerock.commons</groupId>
                 <artifactId>commons-bom</artifactId>
-                <version>21.0.0-alpha-21</version>
+                <version>21.0.0-alpha-23</version>
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>

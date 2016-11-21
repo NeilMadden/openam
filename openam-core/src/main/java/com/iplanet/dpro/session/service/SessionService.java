@@ -40,6 +40,7 @@ import org.forgerock.openam.session.SessionConstants;
 import org.forgerock.openam.session.SessionEventType;
 import org.forgerock.openam.session.service.SessionAccessManager;
 import org.forgerock.openam.utils.CrestQuery;
+import org.forgerock.openam.utils.Time;
 import org.forgerock.util.Reject;
 
 import com.iplanet.am.util.SystemProperties;
@@ -72,9 +73,7 @@ public class SessionService {
     public static final String SESSION_SERVICE = "session";
 
     private final Debug sessionDebug;
-    private final SessionServiceConfig serviceConfig;
     private final DsameAdminTokenProvider dsameAdminTokenProvider;
-    private final MonitoringOperations monitoringOperations;
     private final InternalSessionListener sessionEventBroker;
     private final InternalSessionFactory internalSessionFactory;
     private final SessionOperationStrategy sessionOperationStrategy;
@@ -87,8 +86,6 @@ public class SessionService {
     private SessionService(
             final @Named(SessionConstants.SESSION_DEBUG) Debug sessionDebug,
             final DsameAdminTokenProvider dsameAdminTokenProvider,
-            final SessionServiceConfig serviceConfig,
-            final MonitoringOperations monitoringOperations,
             final InternalSessionEventBroker internalSessionEventBroker,
             final InternalSessionFactory internalSessionFactory,
             final SessionAccessManager sessionAccessManager,
@@ -96,8 +93,6 @@ public class SessionService {
 
         this.sessionDebug = sessionDebug;
         this.dsameAdminTokenProvider = dsameAdminTokenProvider;
-        this.serviceConfig = serviceConfig;
-        this.monitoringOperations = monitoringOperations;
         this.sessionEventBroker = internalSessionEventBroker;
         this.internalSessionFactory = internalSessionFactory;
         this.sessionOperationStrategy = sessionOperationStrategy;
@@ -156,20 +151,6 @@ public class SessionService {
     /**
      * Destroy a Internal Session, whose session id has been specified.
      *
-     * @param internalSession The session to destroy.
-     */
-    void destroyInternalSession(InternalSession internalSession) {
-        sessionAccessManager.removeInternalSession(internalSession);
-        if (internalSession != null && internalSession.getState() != SessionState.INVALID) {
-            fireSessionEvent(internalSession, SessionEventType.DESTROY);
-            internalSession.setState(SessionState.DESTROYED);
-        }
-        sessionAccessManager.removeSessionId(internalSession.getSessionID());
-    }
-
-    /**
-     * Destroy a Internal Session, whose session id has been specified.
-     *
      * @param sessionID
      */
     public void destroyAuthenticationSession(final SessionID sessionID) {
@@ -186,7 +167,7 @@ public class SessionService {
     }
 
     private void fireSessionEvent(InternalSession session, SessionEventType sessionEventType) {
-        sessionEventBroker.onEvent(new InternalSessionEvent(session, sessionEventType));
+        sessionEventBroker.onEvent(new InternalSessionEvent(session, sessionEventType, Time.currentTimeMillis()));
     }
 
     /**
@@ -198,39 +179,6 @@ public class SessionService {
      */
     public boolean checkSessionExists(SessionID sessionId) throws SessionException {
         return sessionOperationStrategy.getOperation(sessionId).checkSessionExists(sessionId);
-    }
-
-    /**
-     * Returns the Internal Session corresponding to a Session ID.
-     *
-     * @param sessionId Session Id
-     */
-    public InternalSession getInternalSession(SessionID sessionId) { // TODO Used to recover authentication session by AuthD
-
-        if (sessionId == null) {
-            return null;
-        }
-        // check if sid is actually a handle return null (in order to prevent from assuming recovery case)
-        if (sessionId.isSessionHandle()) {
-            return null;
-        }
-        return sessionAccessManager.getInternalSession(sessionId);
-    }
-
-    /**
-     * Decrements number of active sessions
-     */
-    // TODO: Remove monitoringOperations counting code in 14.0.0, replace with numSubOrdinates in 14.5.0
-    public void decrementActiveSessions() {
-        monitoringOperations.decrementActiveSessions();
-    }
-
-    /**
-     * Increments number of active sessions
-     */
-    // TODO: Remove monitoringOperations counting code in 14.0.0, replace with numSubOrdinates in 14.5.0
-    public void incrementActiveSessions() {
-        monitoringOperations.incrementActiveSessions();
     }
 
     // The following methods are corresponding to the session requests
@@ -308,8 +256,7 @@ public class SessionService {
      * @param value
      * @throws SessionException
      */
-    public void setExternalProperty(SSOToken clientToken, SessionID sessionId,
-                                    String name, String value)
+    public void setExternalProperty(SSOToken clientToken, SessionID sessionId, String name, String value)
             throws SessionException {
         sessionOperationStrategy.getOperation(sessionId).setExternalProperty(clientToken, sessionId, name, value);
     }
@@ -334,10 +281,10 @@ public class SessionService {
             isSuperUser = adminUserId.equals(user);
 
         } catch (SSOException ssoe) {
-            sessionDebug.error("SessionService.isSuperUser: Cannot get the admin token for this operation.");
+            sessionDebug.error("SessionService.isSuperUser: Cannot get the admin token for this operation.", ssoe);
 
         } catch (IdRepoException idme) {
-            sessionDebug.error("SessionService.isSuperUser: Cannot get the user identity.");
+            sessionDebug.error("SessionService.isSuperUser: Cannot get the user identity '{}'.", uuid, idme);
         }
 
         if (sessionDebug.messageEnabled()) {
@@ -345,14 +292,6 @@ public class SessionService {
         }
 
         return isSuperUser;
-    }
-
-    /**
-     * Determines if the Maximum  umber of active sessions has been reached.
-     * @return true if the maximum number of sessions has ben reached.
-     */
-    public boolean hasExceededMaxSessions() {
-        return monitoringOperations.getActiveSessions() >= serviceConfig.getMaxSessions();
     }
 
     /**

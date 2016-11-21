@@ -19,9 +19,7 @@ package com.iplanet.dpro.session.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.forgerock.json.test.assertj.AssertJJsonValueAssert.assertThat;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.*;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,11 +125,6 @@ public class SessionNotificationPublisherTest {
         assertIgnoresSessionEvent(SessionEventType.PROTECTED_PROPERTY);
     }
 
-    @Test
-    public void shouldIgnoreMaxSessionLimitReachedEvent() {
-        assertIgnoresSessionEvent(SessionEventType.SESSION_MAX_LIMIT_REACHED);
-    }
-
     private void assertSendsNotificationForSessionEvent(SessionEventType sessionEventType) {
         // Given
         given(session.getSessionID()).willReturn(new SessionID("masterSessionId"));
@@ -148,7 +141,8 @@ public class SessionNotificationPublisherTest {
         // Given
 
         // When
-        sessionNotificationPublisher.onEvent(new InternalSessionEvent(session, sessionEventType));
+        sessionNotificationPublisher.onEvent(new InternalSessionEvent(session, sessionEventType,
+                System.currentTimeMillis()));
 
         // Then
         verifyZeroInteractions(notificationBroker);
@@ -159,7 +153,8 @@ public class SessionNotificationPublisherTest {
         ArgumentCaptor<JsonValue> notificationCaptor = ArgumentCaptor.forClass(JsonValue.class);
         given(notificationBroker.publish(eq(Topic.of("/agent/session")), notificationCaptor.capture())).willReturn(true);
 
-        sessionNotificationPublisher.onEvent(new InternalSessionEvent(session, sessionEventType));
+        sessionNotificationPublisher.onEvent(new InternalSessionEvent(session, sessionEventType,
+                System.currentTimeMillis()));
 
         return notificationCaptor.getAllValues();
     }

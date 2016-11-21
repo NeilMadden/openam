@@ -15,23 +15,18 @@
  */
 
 import _ from "lodash";
-import { Button, Panel, FormGroup, ControlLabel } from "react-bootstrap";
+import { Panel, FormGroup, ControlLabel } from "react-bootstrap";
 import { t } from "i18next";
 import React, { Component } from "react";
 import Select from "react-select";
-
-import { getByIdStartsWith } from "org/forgerock/openam/ui/admin/services/global/UsersService";
 import {
     getByUserIdAndRealm,
-    getByRealm,
     invalidateByHandles
 } from "org/forgerock/openam/ui/admin/services/global/SessionsService";
+import { getByIdStartsWith } from "org/forgerock/openam/ui/admin/services/global/UsersService";
 import CallToAction from "components/CallToAction";
-import Constants from "org/forgerock/commons/ui/common/util/Constants";
-import EventManager from "org/forgerock/commons/ui/common/main/EventManager";
 import PageDescription from "components/PageDescription";
 import SessionsTable from "./SessionsTable";
-import showConfirmationBeforeAction from "org/forgerock/openam/ui/admin/utils/form/showConfirmationBeforeAction";
 import SimplePageHeader from "components/SimplePageHeader";
 import withRouter from "org/forgerock/commons/ui/common/components/hoc/withRouter";
 import withRouterPropType from "org/forgerock/commons/ui/common/components/hoc/withRouterPropType";
@@ -53,7 +48,6 @@ class SessionsView extends Component {
         super(props);
 
         this.handleSelectAsyncOnChange = this.handleSelectAsyncOnChange.bind(this);
-        this.handleClickInvalidateAll = this.handleClickInvalidateAll.bind(this);
         this.handleInvalidateSessions = this.handleInvalidateSessions.bind(this);
         this.fetchSessionsByUserIdAndRealm = this.fetchSessionsByUserIdAndRealm.bind(this);
         this.state = {
@@ -65,26 +59,6 @@ class SessionsView extends Component {
         const handles = _.pluck(sessions, "sessionHandle");
         invalidateByHandles(handles).then(() =>
             this.fetchSessionsByUserIdAndRealm(this.state.userId, this.props.router.params[0]));
-    }
-
-    handleClickInvalidateAll () {
-        const realm = this.props.router.params[0];
-        showConfirmationBeforeAction(
-            { message: t("console.sessions.confirmInvalidate", { realm }) },
-            () => {
-                getByRealm(realm)
-                    .then((users) => _.map(users, (user) => user.sessionHandle))
-                    .then(invalidateByHandles)
-                    .then(() => {
-                        this.setState({
-                            userId: null,
-                            sessions: []
-                        });
-
-                        EventManager.sendEvent(Constants.EVENT_DISPLAY_MESSAGE_REQUEST, "invalidationSuccessful");
-                    });
-            },
-            t("console.sessions.invalidate"));
     }
 
     fetchSessionsByUserIdAndRealm (userId, realm) {
@@ -101,7 +75,7 @@ class SessionsView extends Component {
         });
 
         if (userId) {
-            this.fetchSessionsByUserIdAndRealm (userId, this.props.router.params[0]);
+            this.fetchSessionsByUserIdAndRealm(userId, this.props.router.params[0]);
         }
     }
 
@@ -122,14 +96,7 @@ class SessionsView extends Component {
 
         return (
             <div>
-                <SimplePageHeader title={ t("console.sessions.title") }>
-                    <Button
-                        bsStyle="danger"
-                        onClick={ this.handleClickInvalidateAll }
-                    >
-                        { t("console.sessions.invalidateAll") }
-                    </Button>
-                </SimplePageHeader>
+                <SimplePageHeader title={ t("console.sessions.title") } />
 
                 <PageDescription>{ t("console.sessions.search.intro") }</PageDescription>
 

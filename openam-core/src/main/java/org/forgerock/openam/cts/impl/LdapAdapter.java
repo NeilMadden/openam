@@ -16,14 +16,15 @@
 
 package org.forgerock.openam.cts.impl;
 
-import static org.forgerock.openam.cts.api.CTSOptions.OPTIMISTIC_CONCURRENCY_CHECK_OPTION;
-import static org.forgerock.openam.tokens.CoreTokenField.ETAG;
+import static org.forgerock.openam.cts.api.CTSOptions.*;
+import static org.forgerock.openam.tokens.CoreTokenField.*;
 
-import javax.inject.Inject;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 
-import com.forgerock.opendj.ldap.controls.TransactionIdControl;
+import javax.inject.Inject;
+
 import org.forgerock.openam.audit.context.AuditRequestContext;
 import org.forgerock.openam.cts.api.filter.TokenFilter;
 import org.forgerock.openam.cts.api.tokens.Token;
@@ -54,6 +55,7 @@ import org.forgerock.opendj.ldap.LdapException;
 import org.forgerock.opendj.ldap.ResultCode;
 import org.forgerock.opendj.ldap.controls.PostReadRequestControl;
 import org.forgerock.opendj.ldap.controls.PostReadResponseControl;
+import org.forgerock.opendj.ldap.controls.PreReadResponseControl;
 import org.forgerock.opendj.ldap.requests.AddRequest;
 import org.forgerock.opendj.ldap.requests.DeleteRequest;
 import org.forgerock.opendj.ldap.requests.ModifyRequest;
@@ -63,6 +65,8 @@ import org.forgerock.opendj.ldap.responses.Result;
 import org.forgerock.opendj.ldap.responses.SearchResultEntry;
 import org.forgerock.util.Option;
 import org.forgerock.util.Options;
+
+import com.forgerock.opendj.ldap.controls.TransactionIdControl;
 
 /**
  * Responsible adapting the LDAP SDK Connection and its associated domain
@@ -152,6 +156,10 @@ public class LdapAdapter implements TokenStorageAdapter {
     /**
      * Update the Token based on whether there were any changes between the two.
      *
+     * It is up to the underlying ldap later to update the etag so the etag
+     * so the etag is removed from the previous and updated token before the diff is
+     * computed.
+     *
      * <p>If the {@literal previous} {@code Token} contains a non-{@code null}
      * {@link CoreTokenField#ETAG} attribute value then the update will be performed with an
      * optimistic concurrency check. If it does not contain the attribute or it contains a
@@ -170,6 +178,10 @@ public class LdapAdapter implements TokenStorageAdapter {
         Entry previousEntry = conversion.getEntry(previous);
         LdapTokenAttributeConversion.stripObjectClass(previousEntry);
 
+        //etag should not be modified and should not be part of the modification request
+        //it is the up to the underlying ldap layer to generate etag
+        previousEntry.removeAttribute(ETAG.toString());
+        currentEntry.removeAttribute(ETAG.toString());
         ModifyRequest request = Entries.diffEntries(previousEntry, currentEntry,
             Entries.diffOptions().replaceSingleValuedAttributes());
 
@@ -203,25 +215,35 @@ public class LdapAdapter implements TokenStorageAdapter {
      *
      * @param tokenId The non null Token ID to delete.
      * @param options The non null Options for the operation.
+     * @return A {@link PartialToken} containing at least the {@link CoreTokenField#TOKEN_ID}.
      * @throws DataLayerException If the operation failed, this exception will capture the reason.
      * @throws OptimisticConcurrencyCheckFailedException If the operation failed due to an assertion on the tokens ETag.
      */
-    public void delete(String tokenId, Options options) throws DataLayerException {
+    public PartialToken delete(String tokenId, Options options) throws DataLayerException {
         String dn = String.valueOf(conversion.generateTokenDN(tokenId));
         try {
             getConnection();
             DeleteRequest request = LDAPRequests.newDeleteRequest(dn);
             request = applyOptions(request, options);
-            verifySuccess(connection.delete(request));
+            Result result = connection.delete(request);
+            verifySuccess(result);
+            PreReadResponseControl control = result.getControl(PreReadResponseControl.DECODER, new DecodeOptions());
+            if (control != null) {
+                return conversion.tokenFromEntry(control.getEntry()).toPartialToken();
+            } else {
+                return new PartialToken(Collections.<CoreTokenField, Object>singletonMap(CoreTokenField.TOKEN_ID, tokenId));
+            }
         } catch (AssertionFailureException e) {
             throw new OptimisticConcurrencyCheckFailedException(tokenId,
                     options.get(OPTIMISTIC_CONCURRENCY_CHECK_OPTION), e);
         } catch (LdapException e) {
             Result result = e.getResult();
             if (e.getResult() != null && ResultCode.NO_SUCH_OBJECT.equals(result.getResultCode())) {
-                return;
+                return new PartialToken(Collections.<CoreTokenField, Object>singletonMap(CoreTokenField.TOKEN_ID, tokenId));
             }
             throw new LdapOperationFailedException(e.getResult());
+        } catch (DecodeException e) {
+            throw new LdapOperationFailedException(e.getMessage());
         }
     }
 
@@ -255,7 +277,8 @@ public class LdapAdapter implements TokenStorageAdapter {
     }
 
     @Override
-    public ContinuousQuery startContinuousQuery(TokenFilter filter, ContinuousQueryListener listener) {
+    public ContinuousQuery startContinuousQuery(TokenFilter filter, ContinuousQueryListener listener)
+            throws DataLayerException {
         return queryFactory.createInstance()
             .returnTheseAttributes(filter.getReturnFields())
             .withFilter(filter.getQuery().accept(queryConverter, null))

@@ -23,17 +23,16 @@ import _ from "lodash";
 
 const initialState = {
     realm: undefined,
-    maxidletime: undefined
+    sessionHandle: undefined
 };
 
 const session = function (state = initialState, action) {
     switch (action.type) {
         case SESSION_ADD_INFO: {
-            const sessionInfo = {};
-            const secondsInMinute = 60;
-
-            if (action.info.maxidletime) { sessionInfo.maxidletime = action.info.maxidletime * secondsInMinute; }
-            if (action.info.realm) { sessionInfo.realm = action.info.realm.toLowerCase(); }
+            const sessionInfo = {
+                realm: action.realm.toLowerCase(),
+                sessionHandle: action.sessionHandle
+            };
 
             return _.merge({}, state, sessionInfo);
         }

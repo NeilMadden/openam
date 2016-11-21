@@ -15,11 +15,12 @@
  */
 package org.forgerock.openam.cts.api;
 
-import com.iplanet.dpro.session.service.SessionServiceConfig;
+import javax.inject.Singleton;
 
 /**
  * Responsible for collecting together all constants used in the Core Token Service.
  */
+@Singleton
 public class CoreTokenConstants {
 
     /**
@@ -68,7 +69,7 @@ public class CoreTokenConstants {
 
     public static final String FR_CORE_TOKEN = "frCoreToken";
     /**
-     * The name of the Scheduled Service used by the CTS Reaper.
+     * The name of the general Scheduled Service used by the CTS.
      */
     public static final String CTS_SCHEDULED_SERVICE = "CTSScheduledService";
     /**
@@ -116,6 +117,11 @@ public class CoreTokenConstants {
      * Default maximum number of connections to the token store.
      */
     public static final String CTS_STORE_MAX_CONNECTIONS_DEFAULT = "10";
+
+    /**
+     * Enable/disable the OpenDJ SDK's affinity based load balancing feature.
+     */
+    public static final String CTS_STORE_AFFINITY_ENABLED = "org.forgerock.services.cts.store.affinity.enabled";
 
     /**
      * The maximum duration in seconds to wait whilst placing tasks on the asynchronous work queue.

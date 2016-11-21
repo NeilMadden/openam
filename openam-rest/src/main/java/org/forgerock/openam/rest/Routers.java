@@ -22,6 +22,7 @@ import static org.forgerock.http.routing.RouteMatchers.requestUriMatcher;
 import static org.forgerock.http.routing.RoutingMode.EQUALS;
 import static org.forgerock.http.routing.RoutingMode.STARTS_WITH;
 import static org.forgerock.http.routing.Version.version;
+import static org.forgerock.json.resource.Resources.newInternalConnectionFactory;
 import static org.forgerock.json.resource.http.CrestHttp.newHttpHandler;
 
 import java.util.ArrayList;
@@ -119,20 +120,17 @@ public class Routers {
 
         private final Router router;
         private final org.forgerock.http.routing.Router chfRouter;
-        private final CrestProtocolEnforcementFilter crestProtocolEnforcementFilter;
         private final Filter defaultAuthenticationEnforcer;
         private final AuditFilter auditFilter;
         private final Filter contextFilter;
         private final Filter loggingFilter;
 
-        RootResourceRouterImpl(Router router, org.forgerock.http.routing.Router chfRouter,
-                CrestProtocolEnforcementFilter crestProtocolEnforcementFilter, Set<String> invalidRealms,
+        RootResourceRouterImpl(Router router, org.forgerock.http.routing.Router chfRouter,Set<String> invalidRealms,
                 Filter defaultAuthenticationEnforcer, AuditFilter auditFilter, Filter contextFilter,
                 Filter loggingFilter) {
             super(router, invalidRealms, defaultAuthenticationEnforcer, auditFilter, contextFilter, loggingFilter);
             this.router = router;
             this.chfRouter = chfRouter;
-            this.crestProtocolEnforcementFilter = crestProtocolEnforcementFilter;
             this.defaultAuthenticationEnforcer = defaultAuthenticationEnforcer;
             this.contextFilter = contextFilter;
             this.loggingFilter = loggingFilter;
@@ -141,8 +139,8 @@ public class Routers {
 
         @Override
         ResourceRoute createRoute(String uriTemplate) {
-            return new RootResourceRoute(router, chfRouter, crestProtocolEnforcementFilter,
-                    defaultAuthenticationEnforcer, auditFilter, contextFilter, loggingFilter, uriTemplate);
+            return new RootResourceRoute(router, chfRouter, defaultAuthenticationEnforcer, auditFilter, contextFilter,
+                    loggingFilter, uriTemplate);
         }
     }
 
@@ -211,20 +209,19 @@ public class Routers {
     static class RootResourceRoute extends ResourceRoute {
 
         private final org.forgerock.http.routing.Router chfRouter;
-        private final CrestProtocolEnforcementFilter crestProtocolEnforcementFilter;
 
         RootResourceRoute(Router router, org.forgerock.http.routing.Router chfRouter,
-                CrestProtocolEnforcementFilter crestProtocolEnforcementFilter, Filter defaultAuthenticationEnforcer,
-                AuditFilter auditFilter, Filter contextFilter, Filter loggingFilter, String uriTemplate) {
+                Filter defaultAuthenticationEnforcer, AuditFilter auditFilter, Filter contextFilter,
+                Filter loggingFilter, String uriTemplate) {
             super(router, defaultAuthenticationEnforcer, auditFilter, contextFilter, loggingFilter, uriTemplate);
             this.chfRouter = chfRouter;
-            this.crestProtocolEnforcementFilter = crestProtocolEnforcementFilter;
         }
 
         @Override
         void addRoute(RoutingMode mode, String uriTemplate, RequestHandler resource) {
             super.addRoute(mode, uriTemplate, resource);
-            chfRouter.addRoute(requestUriMatcher(mode, uriTemplate), Handlers.chainOf(newHttpHandler(resource), crestProtocolEnforcementFilter));
+            chfRouter.addRoute(requestUriMatcher(mode, uriTemplate),
+                    newHttpHandler(newInternalConnectionFactory(resource)));
         }
     }
 
